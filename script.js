@@ -71,27 +71,6 @@ class Model {
     *vertices() {
         yield* this.#strategy.vertices();
     }
-    *edges() {
-        for (const [i, j] of this.vertices()) {
-            if (this.#isVertex([i, j + 1]))
-                yield [[i, j], [i, j + 1]];
-            if (this.#isVertex([i + 1, j]))
-                yield [[i, j], [i + 1, j]];
-            if (this.#isVertex([i + 1, j + 1]))
-                yield [[i, j], [i + 1, j + 1]];
-        }
-    }
-    *faces() {
-        for (const [i, j] of this.vertices()) {
-            if (this.#isVertex([i, j + 1]) && this.#isVertex([i + 1, j + 1]))
-                yield [[i, j], [i, j + 1], [i + 1, j + 1]];
-            if (this.#isVertex([i + 1, j]) && this.#isVertex([i + 1, j + 1]))
-                yield [[i, j], [i + 1, j], [i + 1, j + 1]];
-        }
-    }
-    #isVertex(vertex) {
-        return this.#strategy.isVertex(vertex);
-    }
 }
 
 class Strategy2 {
@@ -110,20 +89,20 @@ class Strategy2 {
         }
         return board;
     }
-    isVertex(vertex) {
+    *vertices() {
+        const n = this.#size;
+        for (const i of seq(0, n))
+            for (const j of seq(0, n))
+                if (this.#isVertex([i, j]))
+                    yield [i, j];
+    }
+    #isVertex(vertex) {
         const n = this.#size;
         const [i, j] = vertex;
         const conditions = [i, j, n - i, n - j];
         if (conditions.some((x) => x < 0)) return false;
         if (conditions.filter((x) => x === 0).length === 2) return false;
         return true;
-    }
-    *vertices() {
-        const n = this.#size;
-        for (const i of seq(0, n))
-            for (const j of seq(0, n))
-                if (this.isVertex([i, j]))
-                    yield [i, j];
     }
     next(player) {
         if (player === 1) return 2;
@@ -155,20 +134,20 @@ class Strategy3 {
         }
         return board;
     }
-    isVertex(vertex) {
+    *vertices() {
+        const n = this.#size;
+        for (const i of seq(0, 2 * n))
+            for (const j of seq(0, 2 * n))
+                if (this.#isVertex([i, j]))
+                    yield [i, j];
+    }
+    #isVertex(vertex) {
         const n = this.#size;
         const [i, j] = vertex;
         const conditions = [i, j, 2 * n - i, 2 * n - j, n + i - j, n - i + j];
         if (conditions.some((x) => x < 0)) return false;
         if (conditions.filter((x) => x === 0).length === 2) return false;
         return true;
-    }
-    *vertices() {
-        const n = this.#size;
-        for (const i of seq(0, 2 * n))
-            for (const j of seq(0, 2 * n))
-                if (this.isVertex([i, j]))
-                    yield [i, j];
     }
     next(player) {
         if (player === 1) return 2;
@@ -244,10 +223,8 @@ class BoardViewController {
     }
     #draw() {
         this.#initialize();
-        this.#drawBackground();
         this.#drawPieces();
-        this.#drawEdges();
-        this.#drawFaces();
+        this.#drawBorder();
     }
     #initialize() {
         const w = this.#canvas.clientWidth;
@@ -262,68 +239,48 @@ class BoardViewController {
         const xMaxCoeff = Math.max(...xCoeffs);
         const yMaxCoeff = Math.max(...yCoeffs);
         this.#unit = Math.min(
-            w / (xMaxCoeff - xMinCoeff + 1),
-            h / (yMaxCoeff - yMinCoeff + 1),
+            w / (xMaxCoeff - xMinCoeff + 2),
+            h / (yMaxCoeff - yMinCoeff + 2),
         );
         this.#offsetX = w / 2 - (xMinCoeff + xMaxCoeff) / 2 * this.#unit;
         this.#offsetY = h / 2 - (yMinCoeff + yMaxCoeff) / 2 * this.#unit;
-    }
-    #drawBackground() {
-        for (const e of this.#model.edges())
-            this.#strokePath(e, palette('fg'), 0.03);
     }
     #drawPieces() {
         const get = (v) => this.#model.get(v);
         for (const v of this.#model.vertices())
             if (get(v) !== 0)
-                this.#fillHexagon(v, palette(get(v)), 0.5);
+                this.#fillHexagon(v, palette(get(v)));
     }
-    #drawEdges() {
-        const get = (v) => this.#model.get(v);
-        for (const e of this.#model.edges())
-            if (get(e[0]) !== 0 && get(e[0]) === get(e[1]))
-                this.#strokePath(e, palette(get(e[0])), 0.5);
+    #drawBorder() {
+        for (const v of this.#model.vertices())
+            this.#strokeHexagon(v, palette('fg'), 0.05);
     }
-    #drawFaces() {
-        const get = (v) => this.#model.get(v);
-        for (const f of this.#model.faces())
-            if (get(f[0]) !== 0 && get(f[0]) === get(f[1]) && get(f[1]) == get(f[2]))
-                this.#fillPolygon(f, palette(get(f[0])));
+    #fillHexagon(vertex, color) {
+        this.#context.fillStyle = color;
+        this.#context.fill(this.#hexagon(vertex));
     }
-    #fillHexagon(vertex, color, scale) {
+    #strokeHexagon(vertex, color, lineWidth) {
+        this.#context.strokeStyle = color;
+        this.#context.lineWidth = lineWidth * this.#unit;
+        this.#context.lineCap = 'round';
+        this.#context.lineJoin = 'round';
+        this.#context.stroke(this.#hexagon(vertex));
+    }
+    #hexagon(vertex) {
         const [x, y] = this.#coord(vertex);
-        const r = scale * this.#unit;
+        const r = this.#unit / Math.sqrt(3);
         const path = new Path2D;
         for (const k of seq(0, 5)) {
             const theta = (2 * k + 1) / 6 * Math.PI;
             path.lineTo(x + r * Math.cos(theta), y + r * Math.sin(theta));
         }
         path.closePath();
-        this.#context.fillStyle = color;
-        this.#context.fill(path);
-    }
-    #strokePath(vertices, color, scale) {
-        const path = new Path2D();
-        for (const v of vertices)
-            path.lineTo(...this.#coord(v));
-        this.#context.strokeStyle = color;
-        this.#context.lineWidth = scale * this.#unit;
-        this.#context.lineCap = 'round';
-        this.#context.lineJoin = 'round';
-        this.#context.stroke(path);
-    }
-    #fillPolygon(vertices, color) {
-        const path = new Path2D();
-        for (const v of vertices)
-            path.lineTo(...this.#coord(v));
-        path.closePath();
-        this.#context.fillStyle = color;
-        this.#context.fill(path);
+        return path;
     }
     #handleClick(ev) {
         const x0 = ev.offsetX;
         const y0 = ev.offsetY;
-        const threshold = 0.3 * this.#unit;
+        const threshold = 0.4 * this.#unit;
         for (const v of this.#model.vertices()) {
             const [x, y] = this.#coord(v);
             const d = Math.hypot(x - x0, y - y0);
@@ -341,11 +298,11 @@ class BoardViewController {
 }
 
 const palette = (key) => {
-    if (key === 'fg') return '#839496';
+    if (key === 'fg') return '#eee8d5';
     if (key === 'bg') return '#fdf6e3';
     if (key === 1) return '#2aa198';
     if (key === 2) return '#cb4b16';
-    if (key === 3) return '#b58900';
+    if (key === 3) return '#859900';
     console.error(`Invalid key:: ${key}`);
 }
 
