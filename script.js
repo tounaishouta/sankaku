@@ -113,13 +113,17 @@ class Strategy2 {
     isVertex(vertex) {
         const n = this.#size;
         const [i, j] = vertex;
-        return 0 <= i && i <= n && 0 <= j && j <= n;
+        const conditions = [i, j, n - i, n - j];
+        if (conditions.some((x) => x < 0)) return false;
+        if (conditions.filter((x) => x === 0).length === 2) return false;
+        return true;
     }
     *vertices() {
         const n = this.#size;
         for (const i of seq(0, n))
             for (const j of seq(0, n))
-                yield [i, j];
+                if (this.isVertex([i, j]))
+                    yield [i, j];
     }
     next(player) {
         if (player === 1) return 2;
@@ -154,7 +158,10 @@ class Strategy3 {
     isVertex(vertex) {
         const n = this.#size;
         const [i, j] = vertex;
-        return 0 <= i && i <= 2 * n && 0 <= j && j <= 2 * n && i <= j + n && j <= i + n;
+        const conditions = [i, j, 2 * n - i, 2 * n - j, n + i - j, n - i + j];
+        if (conditions.some((x) => x < 0)) return false;
+        if (conditions.filter((x) => x === 0).length === 2) return false;
+        return true;
     }
     *vertices() {
         const n = this.#size;
